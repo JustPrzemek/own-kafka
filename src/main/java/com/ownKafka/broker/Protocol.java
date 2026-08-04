@@ -4,7 +4,9 @@ import com.ownKafka.broker.response.FetchResult;
 import com.ownKafka.broker.response.MetadataResult;
 import com.ownKafka.broker.response.ProduceResult;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,12 +16,14 @@ public class Protocol {
     public static final byte FETCH = 0x02;
     public static final byte METADATA = 0x03;
     public static final byte CREATE_TOPIC = 0x04;
+    public static final byte REPLICATE = 0x05;
+    public static final byte NOTIFY = 0x06;
 
     public static final byte PRODUCE_RESPONSE = 0x11;
     public static final byte FETCH_RESPONSE = 0x12;
     public static final byte METADATA_REQUEST = 0x03;
     public static final byte METADATA_RESPONSE = 0x13;
-
+    public static final byte ERROR_RESPONSE = 0x14;
 
     public static ByteBuffer encodeProduceRequest(String topic, int partition, byte[] message) {
         byte[] topicBytes = topic.getBytes(StandardCharsets.UTF_8);
@@ -194,5 +198,51 @@ public class Protocol {
 
 
         return new MetadataResult(brokers, topicMetadata, errorInformation);
+    }
+
+    public static ByteBuffer encodeReplicateRequest(String topic, int partition, long offset, byte[] message) {
+        byte[] topicBytes = topic.getBytes(StandardCharsets.UTF_8);
+
+        int capacity = 1 + 2 + topicBytes.length + 4 + 8 + 4 + message.length;
+
+        ByteBuffer buffer = ByteBuffer.allocate(capacity);
+        buffer.put(REPLICATE);
+        buffer.putShort((short) topicBytes.length);
+        buffer.put(topicBytes);
+        buffer.putInt(partition);
+        buffer.putLong(offset);
+        buffer.putInt(message.length);
+        buffer.put(message);
+        buffer.flip();
+
+        return buffer;
+    }
+
+    public static ByteBuffer encodeTopicNotification(String topic) {
+        byte[] topicBytes = topic.getBytes(StandardCharsets.UTF_8);
+
+        int capacity = 1 + 2 + topicBytes.length;
+
+        ByteBuffer buffer = ByteBuffer.allocate(capacity);
+        buffer.put(NOTIFY);
+        buffer.putShort((short) topicBytes.length);
+        buffer.put(topicBytes);
+        buffer.flip();
+
+        return buffer;
+    }
+
+    public static void sendErrorResponse(SocketChannel channel, String errorMessage) throws IOException {
+        byte[] errorMessageBytes = errorMessage.getBytes(StandardCharsets.UTF_8);
+
+        int capacity = 1 + 2 + errorMessageBytes.length;
+
+        ByteBuffer buffer = ByteBuffer.allocate(capacity);
+        buffer.put(ERROR_RESPONSE);
+        buffer.putShort((short) errorMessageBytes.length);
+        buffer.put(errorMessageBytes);
+        buffer.flip();
+
+        channel.write(buffer);
     }
 }
